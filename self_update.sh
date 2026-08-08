@@ -118,6 +118,18 @@ done
 echo "$VERSION" > "$VERSION_FILE"
 log "Bundle installed."
 
+# A bundle can introduce a script that needs its own cron entry. Devices that
+# were provisioned by an older setup.sh never get one otherwise, so install it
+# here — idempotently, since this runs on every update.
+if [ -f "${QMED_DIR}/scenery_sync.sh" ]; then
+    if ! crontab -l 2>/dev/null | grep -q "scenery_sync"; then
+        log "Installing scenery sync cron."
+        (crontab -l 2>/dev/null || true; echo "17 */6 * * * ${QMED_DIR}/scenery_sync.sh") | crontab -
+    fi
+    mkdir -p "${QMED_DIR}/videos/scenery"
+    bash "${QMED_DIR}/scenery_sync.sh" >/dev/null 2>&1 &
+fi
+
 # Tell the server now — everything below either reboots the device or
 # restarts the processes that would be sending the next heartbeat.
 report "success" ""

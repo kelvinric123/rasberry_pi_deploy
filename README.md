@@ -63,7 +63,7 @@ Safety properties worth knowing:
 The easiest way to move these files onto your Raspberry Pi is via `scp` (Secure Copy Protocol). You can run this directly from PowerShell or Command Prompt on your Windows machine:
 
 ```powershell
-scp -r c:\laragon\www\qmed_appointment_4\qmed4.0\raspberry_pi qmed@192.168.0.10:~/Desktop/
+scp -r c:\laragon\www\qmed_appointment_4\qmed4.0\raspberry_pi_v2.1 qmed@192.168.0.10:~/Desktop/
 ```
 
 > **Note:** Replace `192.168.0.10` with your Raspberry Pi's actual IP address, and `qmed` with your Raspberry Pi's login username.
@@ -98,6 +98,13 @@ A small **local HTTP server** on port `8888` with two jobs:
 
 Voice announcements ("pronounce") are server-generated TTS audio played by the page — nothing is synthesized on the Pi.
 
+### 4a. `scenery_sync.sh`
+Caches the **screen-saver scenery pack** used when a queue screen's media type is set to *Screen Saver*.
+* Downloads the scenes from `{server}/screensaver/manifest.json`, verifying each sha256, and drops scenes the server has retired.
+* Stores them in `~/.qmed/videos/scenery/` **on purpose** — `start_local_server.sh` already serves `~/.qmed/videos`, so the scenes are reachable at `http://localhost:8888/scenery/<file>` with no change to `server.py`.
+* Runs in **both** video modes (unlike `video_sync.sh`), because the pack is only ~21 KB and caching it means the screen saver keeps playing through a network outage.
+* Cron every 6 hours; a run where nothing changed transfers only the manifest. `self_update.sh` installs the cron on devices provisioned before this script existed.
+
 ### 4. `video_sync.sh`
 This script operates only if you chose **Local + Cloud Hybrid** during `setup.sh`.
 * It routinely downloads and syncs uploaded videos directly to the `.qmed/videos/` directory from the CMS server. 
@@ -108,7 +115,7 @@ This script operates only if you chose **Local + Cloud Hybrid** during `setup.sh
 ### Basic First-Time Setup Instructions:
 
 1. **Copy over the files** via SSH/SCP as mentioned above.
-2. **Access the Pi shell**, enter the folder: `cd ~/Desktop/raspberry_pi`
+2. **Access the Pi shell**, enter the folder: `cd ~/Desktop/raspberry_pi_v2.1`
 3. **Run Install Phase:** `sudo bash install.sh`
 4. **Run Setup Phase:** `bash setup.sh`
 5. **Reboot:** `sudo reboot` (Your Pi will now automatically boot directly to the queue screen).

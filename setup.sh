@@ -493,6 +493,29 @@ else
     echo ""
 fi
 
+# ── Step 8c: Screen-saver scenery cache ──────────────────────────────
+# Runs in BOTH video modes, unlike the video cache: the pack is only a few
+# KB, and caching it means the "Screen Saver" media type keeps playing when
+# the hospital network drops. Lands under videos/ so the local server on
+# :8888 already serves it at /scenery/.
+echo -e "${CYAN}${BOLD}Step 8c: Setting Up Screen Saver Scenery${NC}"
+
+mkdir -p "${QMED_DIR}/videos/scenery"
+
+fetch_asset scenery_sync.sh || true
+
+if [ -f "${QMED_DIR}/scenery_sync.sh" ]; then
+    echo -e "${DIM}Downloading scenery pack...${NC}"
+    bash "${QMED_DIR}/scenery_sync.sh" || true
+
+    (crontab -l 2>/dev/null | grep -v "scenery_sync" || true) | crontab -
+    (crontab -l 2>/dev/null || true; echo "17 */6 * * * ${QMED_DIR}/scenery_sync.sh") | crontab -
+    echo -e "${GREEN}  ✓ Scenery sync cron job installed (every 6 hours)${NC}"
+else
+    echo -e "  ${YELLOW}⚠ scenery_sync.sh unavailable; the screen saver will stream from the server${NC}"
+fi
+echo ""
+
 # ── Step 9: Configure Autostart ──────────────────────────────────────
 echo -e "${CYAN}${BOLD}Step 9: Configuring Kiosk Autostart${NC}"
 

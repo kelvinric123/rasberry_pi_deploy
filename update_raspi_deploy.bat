@@ -161,8 +161,12 @@ REM  nested repo (.git-raspi_tv-backup, ~110 MB of pack files) that a bare
 REM  ".git" exclusion does NOT match. Publishing that to a public repo would
 REM  leak the whole raspi_tv history. The wildcard also protects the mirror's
 REM  own .git from /MIR's purge.
+REM  "pic" is excluded deliberately: source imagery belongs on the SERVER in
+REM  public/screensaver (the Pi downloads scenery from there, not from this
+REM  repo). Dropping photos into the scripts folder would publish them to a
+REM  PUBLIC repository, which is exactly the accident worth preventing.
 robocopy "%SRC%" "%WORK%" /MIR ^
-    /XD ".git*" ".vscode" ".idea" "__pycache__" "node_modules" ".venv" "venv" ^
+    /XD ".git*" ".vscode" ".idea" "__pycache__" "node_modules" ".venv" "venv" "pic" "pics" "images" ^
     /XF "*.log" "*.tmp" "*.bak" "*.zip" "*.img" "Thumbs.db" "desktop.ini" ^
     /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :copy_failed
