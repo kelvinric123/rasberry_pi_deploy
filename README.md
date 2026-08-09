@@ -133,6 +133,8 @@ The device is designed to run unattended and recover on its own:
 | **Wait‑for‑network on boot** | The kiosk polls the server for up to ~2 minutes before loading, so it never shows a "can't reach site" error on a cold boot. |
 | **Self‑healing kiosk** | Chromium runs in a restart loop (`~/.qmed/kiosk.sh`). If it crashes or is OOM‑killed, it relaunches within seconds. |
 | **Network watchdog** | `~/.qmed/net_watchdog.sh` runs every minute: if the server is unreachable it reconnects Wi‑Fi, and once it's back it force‑reloads the screen. |
+| **Page watchdog (1 min)** | The same cron checks what Chromium is actually *showing*. A failed navigation leaves Chromium parked on its own error page forever — it never retries, and the page's JavaScript died with it. The window title is the signal: the queue page always titles itself `Queue Display - …`, an error page never does. Two soft reloads (F5) one minute apart, then a full Chromium restart. |
+| **HTTP status, not just reachability** | Health is judged by the status code of the **exact screen URL**, not "did curl connect" to the site root. `curl` exits 0 on a 502, so an nginx error used to be recorded as *up* and nothing recovered. 5xx and no-response now count as down; 4xx is logged as a misconfiguration (a reload cannot fix a wrong screen id) without bouncing Wi‑Fi. |
 | **Heartbeat** | Reports online status / IP / Chromium state to the admin dashboard every 60s. |
 
 **Logs on the Pi** (useful for debugging): `~/.qmed/kiosk.log`, `~/.qmed/net_watchdog.log`, `~/.qmed/video_server.log`.
