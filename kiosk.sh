@@ -9,6 +9,25 @@ QMED_DIR="$HOME/.qmed"
 CONFIG_FILE="$QMED_DIR/config.json"
 LOG_FILE="$QMED_DIR/kiosk.log"
 
+# Maintenance pause — written by kiosk_off.sh / setup.sh, format
+# "<expiry-epoch> <boot-id>". While it holds, this script must not run AT
+# ALL: lines below kill the taskbar and the mouse cursor on every launch, so
+# a stray relaunch during maintenance is what kept "hiding" the desktop.
+# Checked here AND at each loop iteration.
+kiosk_paused() {
+    local F=/tmp/qmed-kiosk-paused U B
+    [ -f "$F" ] || return 1
+    read -r U B < "$F" 2>/dev/null
+    U=$(printf '%s' "${U:-}" | tr -cd '0-9')
+    [ -n "$U" ] && [ "$U" -gt "$(date +%s)" ] 2>/dev/null \
+        && [ "${B:-}" = "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)" ]
+}
+
+if kiosk_paused; then
+    echo "Maintenance pause active — kiosk not starting. Reboot restores it." >&2
+    exit 0
+fi
+
 # Trim the log if it grew large across previous boots (it is appended to)
 if [ -f "$LOG_FILE" ] && [ "$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)" -gt 1000000 ]; then
     tail -n 500 "$LOG_FILE" > "$LOG_FILE.tmp" 2>/dev/null && mv "$LOG_FILE.tmp" "$LOG_FILE"
@@ -88,6 +107,13 @@ mkdir -p "$CHROME_PROFILE"
 # Relaunches Chromium if it crashes, is OOM-killed, or is killed by the
 # watchdog to force a reload after a network outage.
 while true; do
+    # An Exit Kiosk pressed while we are running: stop the loop instead of
+    # relaunching Chromium over the engineer's desktop session.
+    if kiosk_paused; then
+        echo "Maintenance pause active — kiosk loop stopping. Reboot restores it."
+        exit 0
+    fi
+
     # Clear crash/restore state so no "Restore pages?" bar appears
     sed -i 's/"exit_type":"[^"]*"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' \
         "$CHROME_PROFILE/Default/Preferences" 2>/dev/null || true

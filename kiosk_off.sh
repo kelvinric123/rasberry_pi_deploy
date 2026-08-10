@@ -10,9 +10,11 @@
 
 QMED_DIR="$HOME/.qmed"
 PAUSE_FILE="/tmp/qmed-kiosk-paused"
-# Optional first argument: minutes to stay down. setup.sh passes a long one,
-# because a device being configured should not have the screen reappear.
-PAUSE_MINUTES="${1:-60}"
+# Optional first argument: minutes to stay down. Defaults to 12 hours —
+# maintenance always ends with a reboot, and the boot-id check voids the
+# pause the moment that happens, so a long expiry costs nothing and a short
+# one puts the kiosk back over an engineer's half-finished SD copy.
+PAUSE_MINUTES="${1:-720}"
 export DISPLAY="${DISPLAY:-:0}"
 
 echo "Stopping the kiosk..."
