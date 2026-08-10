@@ -82,6 +82,18 @@ restore_panel() {
         done
     fi
 
+    # Bookworm ships wf-panel-pi as the panel for the X11 session TOO, and may
+    # not have lxpanel at all — the "session x11/LXDE, panels: wf-panel-pi"
+    # case seen in the field. Try it regardless of compositor.
+    if command -v wf-panel-pi >/dev/null 2>&1; then
+        nohup wf-panel-pi >/dev/null 2>&1 &
+        sleep 1
+        if pgrep -f wf-panel-pi >/dev/null 2>&1; then
+            echo "  taskbar restored (wf-panel-pi)"
+            return 0
+        fi
+    fi
+
     return 1
 }
 

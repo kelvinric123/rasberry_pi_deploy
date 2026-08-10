@@ -23,6 +23,32 @@ kiosk_paused() {
         && [ "${B:-}" = "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)" ]
 }
 
+# --resume: the desktop "QMed Queue Screen" icon. Clicking it is the operator
+# explicitly asking for the queue screen NOW, so it clears any maintenance
+# pause or scheduled autostart skip before the checks below.
+if [ "${1:-}" = "--resume" ]; then
+    rm -f /tmp/qmed-kiosk-paused "$QMED_DIR/skip_next_boot" 2>/dev/null || true
+fi
+
+# One-shot autostart skip — written by pause_autostart.sh, which stores the
+# boot id of the session that REQUESTED it. A different boot id here means
+# this is the first boot after that request: consume the file (so the skip
+# happens exactly once) and convert it into a whole-boot maintenance pause,
+# which also stands the watchdog down. The stock desktop then comes up
+# untouched — taskbar and all — because nothing kiosk-shaped ran to hide it.
+SKIP_FILE="$QMED_DIR/skip_next_boot"
+if [ -f "$SKIP_FILE" ]; then
+    REQ_BOOT=$(cat "$SKIP_FILE" 2>/dev/null | tr -d '[:space:]')
+    CUR_BOOT=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
+    if [ "$REQ_BOOT" != "$CUR_BOOT" ]; then
+        rm -f "$SKIP_FILE"
+        printf '%s %s\n' "$(( $(date +%s) + 43200 ))" "$CUR_BOOT" > /tmp/qmed-kiosk-paused 2>/dev/null || true
+        echo "Autostart skipped for this boot (pause_autostart.sh). Restart again, or click 'QMed Queue Screen', to bring the queue screen back." >&2
+        exit 0
+    fi
+    # Same boot as the request: the skip is for the NEXT restart — run normally.
+fi
+
 if kiosk_paused; then
     echo "Maintenance pause active — kiosk not starting. Reboot restores it." >&2
     exit 0

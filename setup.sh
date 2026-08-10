@@ -657,6 +657,7 @@ EOF
 # have to be installed BEFORE desktop_shortcuts.sh runs.
 fetch_asset kiosk_off.sh || true
 fetch_asset wifi_setup.sh || true
+fetch_asset pause_autostart.sh || true
 fetch_asset desktop_shortcuts.sh || true
 if [ -f "${QMED_DIR}/desktop_shortcuts.sh" ]; then
     bash "${QMED_DIR}/desktop_shortcuts.sh" "${SCRIPT_DIR}" | sed "s/^/  /"

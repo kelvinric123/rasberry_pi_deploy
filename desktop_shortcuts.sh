@@ -33,11 +33,23 @@ write_icon() {
 }
 
 # ── Queue screen ─────────────────────────────────────────────────────
+# --resume: clicking the icon is an explicit "queue screen NOW", so it clears
+# any maintenance pause or scheduled autostart skip that would otherwise make
+# the launch silently refuse.
 write_icon "QMed Queue Screen.desktop" \
     "[Desktop Entry]" "Type=Application" "Name=QMed Queue Screen" \
     "Comment=Launch the queue screen" \
-    "Exec=/bin/bash ${LAUNCH_SCRIPT}" \
+    "Exec=/bin/bash ${LAUNCH_SCRIPT} --resume" \
     "Icon=chromium-browser" "Terminal=false" "Categories=Application;"
+
+# ── Pause autostart (one restart) ────────────────────────────────────
+if [ -f "${QMED_DIR}/pause_autostart.sh" ]; then
+    write_icon "QMed Pause Autostart.desktop" \
+        "[Desktop Entry]" "Type=Application" "Name=QMed Pause Autostart" \
+        "Comment=Next restart boots to the desktop instead of the queue screen (one boot only)" \
+        "Exec=bash -c \"bash '${QMED_DIR}/pause_autostart.sh'; echo ''; read -p 'Press Enter to close...'\"" \
+        "Icon=media-playback-pause" "Terminal=true" "Categories=Settings;"
+fi
 
 # ── Device setup ─────────────────────────────────────────────────────
 # Only when we were told where setup.sh lives; otherwise leave whatever is
