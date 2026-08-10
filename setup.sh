@@ -86,9 +86,6 @@ if ! command -v curl &> /dev/null; then
     exit 1
 fi
 
-# ── Step 0: Network Setup ────────────────────────────────────────────
-# A queue screen must stay online. Make sure Wi-Fi is connected and saved
-# so it auto-reconnects across reboots and outages.
 # ── Step 0a: Keyboard layout ─────────────────────────────────────────
 # Done BEFORE anything asks you to type. Raspberry Pi OS defaults to the GB
 # layout; on a US keyboard that swaps " and @ (and moves # and \), which is
@@ -126,6 +123,9 @@ else
 fi
 echo ""
 
+# ── Step 0: Network Setup ────────────────────────────────────────────
+# A queue screen must stay online. Make sure Wi-Fi is connected and saved
+# so it auto-reconnects across reboots and outages.
 echo -e "${CYAN}${BOLD}Step 0: Network Setup${NC}"
 
 WIFI_SSID=""
@@ -649,112 +649,16 @@ StartupNotify=false
 Terminal=false
 EOF
 
-# Create desktop shortcut for easy launching
-DESKTOP_DIR="$HOME/Desktop"
-mkdir -p "$DESKTOP_DIR"
-cat > "${DESKTOP_DIR}/QMed Queue Screen.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=QMed Queue Screen
-Comment=Launch QMed Queue Screen
-Exec=/bin/bash ${LAUNCH_SCRIPT}
-Icon=chromium-browser
-Terminal=false
-Categories=Application;
-EOF
-chmod +x "${DESKTOP_DIR}/QMed Queue Screen.desktop"
-
-cat > "${DESKTOP_DIR}/QMed Setup.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=QMed Device Setup
-Comment=Run QMed Queue Screen Setup
-Exec=bash -c "cd '${SCRIPT_DIR}' && bash setup.sh; echo ''; read -p 'Press Enter to close...'"
-Icon=preferences-system
-Terminal=true
-Categories=Settings;
-EOF
-chmod +x "${DESKTOP_DIR}/QMed Setup.desktop"
-
-# ── Maintenance shortcuts ────────────────────────────────────────────
-# A queue screen runs fullscreen with no taskbar, so the usual menu entries
-# for Wi-Fi and SD Card Copier are unreachable. Put them on the desktop, where
-# they are one click away once the kiosk is stopped.
-
-fetch_asset kiosk_off.sh || true
-fetch_asset wifi_setup.sh || true
-
-# Exit Kiosk — the one that makes the others usable, since the desktop is
-# hidden behind a fullscreen browser until this runs.
-if [ -f "${QMED_DIR}/kiosk_off.sh" ]; then
-    cat > "${DESKTOP_DIR}/QMed Exit Kiosk.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=QMed Exit Kiosk
-Comment=Stop the queue screen and show the desktop (reboot restores it)
-Exec=bash -c "bash '${QMED_DIR}/kiosk_off.sh'; echo ''; read -p 'Press Enter to close...'"
-Icon=system-log-out
-Terminal=true
-Categories=Settings;
-EOF
-    chmod +x "${DESKTOP_DIR}/QMed Exit Kiosk.desktop"
+# ── Desktop icons ────────────────────────────────────────────────────
+# Written by a shared script so self_update.sh can refresh them on devices
+# that are never re-provisioned. Passing SCRIPT_DIR lets it point the "QMed
+# Setup" icon back at this folder.
+fetch_asset desktop_shortcuts.sh || true
+if [ -f "${QMED_DIR}/desktop_shortcuts.sh" ]; then
+    bash "${QMED_DIR}/desktop_shortcuts.sh" "${SCRIPT_DIR}" | sed "s/^/  /"
+else
+    echo -e "  ${YELLOW}⚠ desktop_shortcuts.sh unavailable; icons not created${NC}"
 fi
-
-# Wi-Fi — the everyday job: scan, pick a network, type the password.
-if [ -f "${QMED_DIR}/wifi_setup.sh" ]; then
-    cat > "${DESKTOP_DIR}/QMed Wi-Fi.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=QMed Wi-Fi
-Comment=Scan for a wireless network and connect this device to it
-Exec=bash '${QMED_DIR}/wifi_setup.sh'
-Icon=network-wireless
-Terminal=false
-Categories=Settings;
-EOF
-    chmod +x "${DESKTOP_DIR}/QMed Wi-Fi.desktop"
-fi
-
-# Network Manager — the full connection editor: static IP, Ethernet, editing
-# or deleting saved profiles. A different job from "join a Wi-Fi network",
-# which is why it gets its own icon rather than sharing the one above.
-# Prefer the system's own launcher so it keeps the stock icon and translations.
-if [ -f /usr/share/applications/nm-connection-editor.desktop ]; then
-    cp /usr/share/applications/nm-connection-editor.desktop "${DESKTOP_DIR}/Network Connections.desktop"
-    chmod +x "${DESKTOP_DIR}/Network Connections.desktop"
-elif command -v nm-connection-editor >/dev/null 2>&1; then
-    cat > "${DESKTOP_DIR}/Network Connections.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=Network Connections
-Comment=Edit network connections, static IP and saved profiles
-Exec=nm-connection-editor
-Icon=preferences-system-network
-Terminal=false
-Categories=Settings;
-EOF
-    chmod +x "${DESKTOP_DIR}/Network Connections.desktop"
-fi
-
-# SD Card Copier — clone this card onto a new one for the next device.
-if [ -f /usr/share/applications/piclone.desktop ]; then
-    cp /usr/share/applications/piclone.desktop "${DESKTOP_DIR}/SD Card Copier.desktop"
-    chmod +x "${DESKTOP_DIR}/SD Card Copier.desktop"
-elif command -v piclone >/dev/null 2>&1; then
-    cat > "${DESKTOP_DIR}/SD Card Copier.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=SD Card Copier
-Comment=Copy this SD card to another card
-Exec=sudo piclone
-Icon=drive-removable-media
-Terminal=false
-Categories=System;
-EOF
-    chmod +x "${DESKTOP_DIR}/SD Card Copier.desktop"
-fi
-
-echo -e "${GREEN}  ✓ Desktop shortcuts: Queue Screen, Setup, Exit Kiosk, Wi-Fi, SD Card Copier${NC}"
 
 # Also keep the legacy LXDE-pi autostart for older systems.
 # Deliberately NO @lxpanel here: the taskbar pops over the kiosk whenever the

@@ -118,6 +118,18 @@ done
 echo "$VERSION" > "$VERSION_FILE"
 log "Bundle installed."
 
+# Refresh the desktop icons. A bundle can add a new one (Wi-Fi, Exit Kiosk,
+# SD Card Copier ...) and most devices are never re-provisioned, so without
+# this they would only ever appear on Pis that someone re-ran setup.sh on.
+#
+# No folder argument: this script has no idea where the operator keeps the
+# setup folder, so desktop_shortcuts.sh leaves any existing "QMed Setup" icon
+# alone rather than pointing it somewhere wrong.
+if [ -f "${QMED_DIR}/desktop_shortcuts.sh" ]; then
+    bash "${QMED_DIR}/desktop_shortcuts.sh" >/dev/null 2>&1 || true
+    log "Desktop icons refreshed."
+fi
+
 # A bundle can introduce a script that needs its own cron entry. Devices that
 # were provisioned by an older setup.sh never get one otherwise, so install it
 # here — idempotently, since this runs on every update.
