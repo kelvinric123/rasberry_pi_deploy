@@ -42,22 +42,72 @@ pkill -f -- '--kiosk' 2>/dev/null || true
 #    screen, unusable for a person.
 pkill -x unclutter 2>/dev/null || true
 
-# 4. Bring the taskbar back. Which binary depends on the session, so try the
-#    one that matches and let the other be.
-if ! pgrep -f 'lxpanel|wf-panel-pi' >/dev/null 2>&1; then
-    if command -v wf-panel-pi >/dev/null 2>&1 && pgrep -x labwc >/dev/null 2>&1; then
-        nohup wf-panel-pi >/dev/null 2>&1 &
-    elif command -v lxpanel >/dev/null 2>&1; then
-        nohup lxpanel --profile LXDE-pi >/dev/null 2>&1 &
+# 4. Bring the taskbar and the desktop icons back.
+#
+#    kiosk.sh kills the panel on every launch (it pops over the fullscreen
+#    window whenever that loses its top layer), so nothing restarts it but us.
+#    Which binary and which profile depends on the session — install.sh puts
+#    the Pi on X11/Openbox via `raspi-config nonint do_wayland W1`, where the
+#    panel is lxpanel, but a device that was never switched may be on labwc
+#    with wf-panel-pi. Try each in turn instead of guessing once.
+restore_panel() {
+    pgrep -f 'lxpanel|wf-panel-pi|xfce4-panel' >/dev/null 2>&1 && return 0
+
+    # Wayland session first, if that is what is actually running.
+    if pgrep -x labwc >/dev/null 2>&1 || pgrep -x wayfire >/dev/null 2>&1; then
+        if command -v wf-panel-pi >/dev/null 2>&1; then
+            nohup wf-panel-pi >/dev/null 2>&1 &
+            sleep 1
+            pgrep -f wf-panel-pi >/dev/null 2>&1 && return 0
+        fi
     fi
+
+    # X11: the profile name differs between Pi OS releases, so try the ones
+    # that exist rather than assuming LXDE-pi.
+    if command -v lxpanel >/dev/null 2>&1; then
+        for PROFILE in LXDE-pi LXDE pi ""; do
+            if [ -n "$PROFILE" ]; then
+                [ -d "$HOME/.config/lxpanel/$PROFILE" ] || continue
+                nohup lxpanel --profile "$PROFILE" >/dev/null 2>&1 &
+            else
+                nohup lxpanel >/dev/null 2>&1 &
+            fi
+            sleep 1
+            if pgrep -f lxpanel >/dev/null 2>&1; then
+                echo "  taskbar restored (lxpanel${PROFILE:+ --profile $PROFILE})"
+                return 0
+            fi
+        done
+    fi
+
+    return 1
+}
+
+# Desktop icons are drawn by the file manager, not the panel. On a session
+# where it was never started there is nothing to click even once the panel is
+# back, so make sure it is running too.
+restore_desktop_icons() {
+    pgrep -f 'pcmanfm.*--desktop' >/dev/null 2>&1 && return 0
+    command -v pcmanfm >/dev/null 2>&1 || return 1
+    nohup pcmanfm --desktop >/dev/null 2>&1 &
     sleep 1
+    pgrep -f 'pcmanfm.*--desktop' >/dev/null 2>&1
+}
+
+if restore_panel; then
+    :
+else
+    echo "  could not start a taskbar."
+    echo "    session : ${XDG_SESSION_TYPE:-unknown} / ${XDG_CURRENT_DESKTOP:-unknown}"
+    printf "    panels  :"
+    for B in lxpanel wf-panel-pi xfce4-panel; do
+        command -v "$B" >/dev/null 2>&1 && printf " %s" "$B"
+    done
+    echo ""
+    echo "    If none are listed, install one:  sudo apt-get install -y lxpanel"
 fi
 
-if pgrep -f 'lxpanel|wf-panel-pi' >/dev/null 2>&1; then
-    echo "  taskbar restored"
-else
-    echo "  this session has no taskbar — use the desktop icons instead"
-fi
+restore_desktop_icons && echo "  desktop icons restored" || true
 
 echo ""
 echo "Kiosk stopped. Desktop icons: Wi-Fi, SD Card Copier, Setup."
