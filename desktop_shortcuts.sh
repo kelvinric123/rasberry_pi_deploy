@@ -98,3 +98,20 @@ elif command -v piclone >/dev/null 2>&1; then
 fi
 
 ls -1 "${DESKTOP_DIR}"/*.desktop 2>/dev/null | wc -l | xargs -I{} echo "Desktop icons installed: {}"
+
+# Say why an icon is missing rather than leaving it a mystery — every one of
+# these is skipped silently when its tool is absent.
+for MISSING in \
+    "${QMED_DIR}/kiosk_off.sh|QMed Exit Kiosk|re-run setup.sh, or curl it from the server" \
+    "${QMED_DIR}/wifi_setup.sh|QMed Wi-Fi|re-run setup.sh, or curl it from the server"
+do
+    IFS='|' read -r M_PATH M_NAME M_FIX <<< "$MISSING"
+    [ -f "$M_PATH" ] || echo "  (no '${M_NAME}' icon: ${M_PATH##*/} is not installed — ${M_FIX})"
+done
+
+if ! command -v nm-connection-editor >/dev/null 2>&1 \
+    && [ ! -f /usr/share/applications/nm-connection-editor.desktop ]; then
+    echo "  (no 'Network Connections' icon: install it with"
+    echo "     sudo apt-get install -y network-manager-gnome"
+    echo "   then re-run this script)"
+fi

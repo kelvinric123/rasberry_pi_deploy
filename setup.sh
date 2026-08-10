@@ -653,6 +653,10 @@ EOF
 # Written by a shared script so self_update.sh can refresh them on devices
 # that are never re-provisioned. Passing SCRIPT_DIR lets it point the "QMed
 # Setup" icon back at this folder.
+# The icons are only written for tools that are actually present, so these
+# have to be installed BEFORE desktop_shortcuts.sh runs.
+fetch_asset kiosk_off.sh || true
+fetch_asset wifi_setup.sh || true
 fetch_asset desktop_shortcuts.sh || true
 if [ -f "${QMED_DIR}/desktop_shortcuts.sh" ]; then
     bash "${QMED_DIR}/desktop_shortcuts.sh" "${SCRIPT_DIR}" | sed "s/^/  /"
