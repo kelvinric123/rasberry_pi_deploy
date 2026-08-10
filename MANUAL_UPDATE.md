@@ -33,27 +33,24 @@ cd ~/Desktop && mv raspberry_pi_v2.1 raspberry_pi_v2.1.scp-old
 git clone https://github.com/kelvinric123/rasberry_pi_deploy.git raspberry_pi_v2.1
 ```
 
-Then install the one-line updater:
-
-```bash
-printf '#!/bin/bash\ncd ~/Desktop/raspberry_pi_v2.1 && git pull --ff-only && cp server.py start_local_server.sh video_sync.sh scenery_sync.sh heartbeat.sh kiosk.sh net_watchdog.sh self_update.sh kiosk_off.sh wifi_setup.sh pause_autostart.sh desktop_shortcuts.sh ~/.qmed/ && chmod +x ~/.qmed/*.sh ~/.qmed/*.py && bash ~/.qmed/start_local_server.sh && pkill -f -- "--kiosk"; echo "updated to $(git -C ~/Desktop/raspberry_pi_v2.1 rev-parse --short HEAD)"\n' > ~/qmed-update
-chmod +x ~/qmed-update
-```
-
 ---
 
-## Every time after that
+## Every update after that
+
+```bash
+bash ~/Desktop/raspberry_pi_v2.1/update_from_git.sh
+```
+
+One script, tracked **in the repo** so `git pull` keeps it current — its file
+list can never go stale. It pulls, verifies the bundle is complete, copies it
+into `~/.qmed/`, refreshes the desktop icons, makes sure the cron jobs exist,
+and restarts the local server and the kiosk (honouring a maintenance pause).
+
+It also installs `~/qmed-update` as a shorthand for itself, so from then on:
 
 ```bash
 ~/qmed-update
 ```
-
-That pulls, copies the 12 bundle files into `~/.qmed/`, and restarts the local
-server and the kiosk. The screen goes black for a few seconds.
-
-> The helper embeds the file list, so after a bundle gains a new script,
-> re-run the `printf` above once to refresh `~/qmed-update` — an old helper
-> silently skips files it does not know about.
 
 ---
 
