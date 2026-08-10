@@ -70,7 +70,40 @@ if [ -f "$CONFIG_FILE" ]; then
     echo ""
     read -p "Do you want to reconfigure? (y/N): " RECONFIG
     if [[ ! "$RECONFIG" =~ ^[Yy]$ ]]; then
-        echo -e "${DIM}Setup cancelled.${NC}"
+        echo ""
+        # Most "re-runs" of setup are not reconfigurations at all — someone
+        # just wants the desktop icons back (new bundle added one, or the
+        # Desktop was cleaned out). Offer that without dragging them through
+        # Wi-Fi and hospital selection again.
+        read -p "Reapply the desktop shortcuts instead? (Y/n): " REAPPLY
+        if [[ "$REAPPLY" =~ ^[Nn]$ ]]; then
+            echo -e "${DIM}Setup cancelled.${NC}"
+            exit 0
+        fi
+
+        echo ""
+        echo -e "${CYAN}Reapplying desktop shortcuts...${NC}"
+        SHORTCUT_SRC="$(cd "$(dirname "$0")" && pwd)"
+
+        # Same source order as fetch_asset later in this script: the folder
+        # this is running from first (freshest after a git pull), then the
+        # server recorded in config.json, else whatever ~/.qmed already has.
+        for A in kiosk_off.sh wifi_setup.sh pause_autostart.sh desktop_shortcuts.sh; do
+            if [ -f "${SHORTCUT_SRC}/${A}" ]; then
+                cp "${SHORTCUT_SRC}/${A}" "${QMED_DIR}/${A}"
+            elif [ ! -f "${QMED_DIR}/${A}" ] && [ -n "$EXISTING_SERVER" ] && [ "$EXISTING_SERVER" != "Unknown" ]; then
+                curl -fsSL "${EXISTING_SERVER}/raspberry-pi/${A}" -o "${QMED_DIR}/${A}" 2>/dev/null \
+                    || rm -f "${QMED_DIR}/${A}"
+            fi
+            chmod +x "${QMED_DIR}/${A}" 2>/dev/null || true
+        done
+
+        if [ -f "${QMED_DIR}/desktop_shortcuts.sh" ]; then
+            bash "${QMED_DIR}/desktop_shortcuts.sh" "$SHORTCUT_SRC" | sed 's/^/  /'
+            echo -e "${GREEN}Done.${NC} Device registration was not touched."
+        else
+            echo -e "${RED}✗ Could not obtain desktop_shortcuts.sh (offline?). Nothing changed.${NC}"
+        fi
         exit 0
     fi
     echo ""
