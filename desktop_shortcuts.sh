@@ -71,16 +71,20 @@ if [ -f "${QMED_DIR}/wifi_setup.sh" ]; then
 fi
 
 # ── Network Connections (static IP, Ethernet, saved profiles) ────────
-# Prefer the system launcher so it keeps the stock icon and translations.
-if [ -f /usr/share/applications/nm-connection-editor.desktop ]; then
-    cp /usr/share/applications/nm-connection-editor.desktop "${DESKTOP_DIR}/Network Connections.desktop" 2>/dev/null
-    chmod +x "${DESKTOP_DIR}/Network Connections.desktop" 2>/dev/null || true
-    gio set "${DESKTOP_DIR}/Network Connections.desktop" metadata::trusted true 2>/dev/null || true
-elif command -v nm-connection-editor >/dev/null 2>&1; then
+# Goes through wifi_setup.sh --editor rather than launching the binary
+# directly: the queue screen is fullscreen and always-on-top, so a window
+# opened under it is invisible and looks like the app failed to start. The
+# wrapper stops the kiosk first and restarts it when the window closes.
+#
+# That is also why we do NOT copy the system's own launcher here, even though
+# it has a nicer icon — it would exec the binary unwrapped.
+if [ -f "${QMED_DIR}/wifi_setup.sh" ] \
+    && { command -v nm-connection-editor >/dev/null 2>&1 \
+        || [ -f /usr/share/applications/nm-connection-editor.desktop ]; }; then
     write_icon "Network Connections.desktop" \
         "[Desktop Entry]" "Type=Application" "Name=Network Connections" \
         "Comment=Edit network connections, static IP and saved profiles" \
-        "Exec=nm-connection-editor" \
+        "Exec=bash '${QMED_DIR}/wifi_setup.sh' --editor" \
         "Icon=preferences-system-network" "Terminal=false" "Categories=Settings;"
 fi
 

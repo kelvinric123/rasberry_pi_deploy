@@ -1,29 +1,74 @@
 #!/bin/bash
-# Join a Wi-Fi network on a kiosk Pi.
+# Network tools for a kiosk Pi.
 #
-# The tray applet lives on the taskbar, and a queue screen deliberately has no
-# taskbar, so there is otherwise no way in. Reachable from the "QMed Wi-Fi"
-# desktop icon, or over SSH.
+#   wifi_setup.sh            scan and join a Wi-Fi network (numbered list)
+#   wifi_setup.sh --editor   open nm-connection-editor (static IP, profiles)
 #
-# Same interaction as Step 0 of setup.sh, on purpose: pick the network from a
-# NUMBERED LIST rather than typing it, and see the password as you type it.
-# Typing "KPJ-Guest_5G" exactly right on a Pi keyboard — often with a layout
-# that swaps " and @ — is where most failed setups came from.
+# BOTH modes stop the kiosk first and start it again when you are done. A
+# queue screen runs fullscreen and always-on-top, so anything launched under
+# it opens invisibly behind — which looks exactly like the app failing to
+# start. Pausing is not optional for these tools, it is what makes them work.
 #
-# For static IPs, Ethernet or editing saved profiles, use the separate
-# "Network Connections" icon (nm-connection-editor).
+# Pick from a NUMBERED LIST rather than typing the SSID, and see the password
+# as you type it: getting "KPJ-Guest_5G" right on a Pi keyboard — often with a
+# layout that swaps " and @ — is where most failed setups came from.
 #
 # Installed to ~/.qmed/wifi_setup.sh by setup.sh.
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'
 BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 
-# Launched from a desktop icon? Re-run inside a terminal so there is somewhere
-# to read the list and type.
+QMED_DIR="$HOME/.qmed"
+PAUSE_FILE="/tmp/qmed-kiosk-paused"
+MODE="picker"
+[ "${1:-}" = "--editor" ] && MODE="editor"
+
+# ── Kiosk pause / resume ─────────────────────────────────────────────
+# Same marker format kiosk_off.sh writes and net_watchdog.sh reads:
+# "<expiry-epoch> <boot-id>". Without the marker the watchdog would put the
+# queue screen back over the top of this within a minute.
+pause_kiosk() {
+    local BOOT_ID
+    BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
+    printf '%s %s\n' "$(( $(date +%s) + 3600 ))" "$BOOT_ID" > "$PAUSE_FILE" 2>/dev/null || true
+    pkill -f "${QMED_DIR}/kiosk.sh" 2>/dev/null || true
+    sleep 1
+    pkill -f -- '--kiosk' 2>/dev/null || true
+    pkill -x unclutter 2>/dev/null || true      # give the mouse pointer back
+}
+
+# Runs from a trap, so the screen comes back even if the window is closed
+# with the X, the terminal is killed, or the script errors out.
+resume_kiosk() {
+    rm -f "$PAUSE_FILE" 2>/dev/null || true
+    if [ -f "${QMED_DIR}/kiosk.sh" ] && ! pgrep -f "${QMED_DIR}/kiosk.sh" >/dev/null 2>&1; then
+        DISPLAY="${DISPLAY:-:0}" nohup bash "${QMED_DIR}/kiosk.sh" >/dev/null 2>&1 &
+    fi
+}
+
+# ── Editor mode ──────────────────────────────────────────────────────
+if [ "$MODE" = "editor" ]; then
+    export DISPLAY="${DISPLAY:-:0}"
+    if ! command -v nm-connection-editor >/dev/null 2>&1; then
+        echo "nm-connection-editor is not installed."
+        echo "    sudo apt-get install -y network-manager-gnome"
+        exit 1
+    fi
+    pause_kiosk
+    trap resume_kiosk EXIT
+    # Blocking on purpose: the queue screen stays down for exactly as long as
+    # the window is open.
+    nm-connection-editor
+    exit 0
+fi
+
+# ── Picker mode ──────────────────────────────────────────────────────
+# Launched from a desktop icon? Re-run inside a terminal so there is
+# somewhere to read the list and type. Pausing happens in the child.
 if [ ! -t 0 ] || [ ! -t 1 ]; then
     for TERM_BIN in lxterminal x-terminal-emulator xfce4-terminal xterm; do
         if command -v "$TERM_BIN" >/dev/null 2>&1; then
-            exec "$TERM_BIN" -e "bash '$0' --in-terminal"
+            exec "$TERM_BIN" -e "bash '$0'"
         fi
     done
 fi
@@ -34,7 +79,11 @@ if ! command -v nmcli >/dev/null 2>&1; then
     exit 1
 fi
 
+pause_kiosk
+trap resume_kiosk EXIT
+
 echo -e "${CYAN}${BOLD}QMed — Connect to Wi-Fi${NC}"
+echo -e "${DIM}Queue screen paused; it restarts when you close this window.${NC}"
 echo ""
 
 CURRENT_SSID=$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}')
@@ -117,4 +166,5 @@ else
 fi
 
 echo ""
+echo -e "  ${DIM}Closing this window restarts the queue screen.${NC}"
 read -p "  Press Enter to close..." _
