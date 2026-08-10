@@ -25,6 +25,8 @@ Target problem: **calls + voice announcements occasionally failing after the scr
 * `sse_server/server.php` + in-app SSE: heartbeats are now real `event: ping` events (comments are invisible to JS), and pending per-device call events younger than 45s are **delivered** on connect instead of discarded — calls made during the 120s stream-recycle gap or a page reload are no longer lost.
 * `QueueScreenEventService` stamps `created_at_ms` on call events; `TtsService` retries synthesis.
 
+> **Updating one Pi by hand?** See [MANUAL_UPDATE.md](MANUAL_UPDATE.md) — the SSH runbook for testing a change on a single device before the fleet gets it.
+
 ## Releasing to the fleet — "Sync from Git"
 
 The scripts in this folder are the **source of truth for a public GitHub repo**. Releasing them no longer needs an SSH session on the server:

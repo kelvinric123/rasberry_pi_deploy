@@ -75,8 +75,9 @@ apt-get install -y -qq \
     sed \
     iw \
     alsa-utils \
-    mpv
-echo -e "${GREEN}  ✓ Packages installed (chromium, unclutter, xdotool, jq, curl, iw, alsa-utils, mpv)${NC}"
+    mpv \
+    network-manager-gnome
+echo -e "${GREEN}  ✓ Packages installed (chromium, unclutter, xdotool, jq, curl, iw, alsa-utils, mpv, nm-connection-editor)${NC}"
 
 # ── Step 3: Disable screen blanking ──────────────────────────────────
 echo -e "${CYAN}[3/7] Disabling screen blanking & power saving...${NC}"

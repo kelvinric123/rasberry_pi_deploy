@@ -36,12 +36,38 @@ for IFACE in $(ls /sys/class/net 2>/dev/null | grep -E '^wl'); do
     sudo -n iw dev "$IFACE" set power_save off 2>/dev/null || true
 done
 
+# ── Maintenance pause ────────────────────────────────────────────────
+# kiosk_off.sh drops this marker when an engineer deliberately stops the
+# kiosk to use the desktop. Without it, this script would helpfully restart
+# the queue screen over the top of whatever they were doing, within a minute.
+#
+# It fails safe in two independent ways: the file lives in /tmp so a reboot
+# clears it, and it carries an expiry so a forgotten pause heals itself.
+# Marker format: "<expiry-epoch> <boot-id>". BOTH must hold, which is what
+# makes the pause end at the next restart even if /tmp survived it.
+KIOSK_PAUSED=0
+PAUSE_FILE="/tmp/qmed-kiosk-paused"
+if [ -f "$PAUSE_FILE" ]; then
+    read -r PAUSE_UNTIL PAUSE_BOOT < "$PAUSE_FILE" 2>/dev/null
+    PAUSE_UNTIL=$(printf '%s' "${PAUSE_UNTIL:-}" | tr -cd '0-9')
+    CURRENT_BOOT=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
+
+    if [ -n "$PAUSE_UNTIL" ] && [ "$PAUSE_UNTIL" -gt "$(date +%s)" ] 2>/dev/null \
+        && [ "${PAUSE_BOOT:-}" = "$CURRENT_BOOT" ]; then
+        KIOSK_PAUSED=1
+    else
+        # Expired, from a previous boot, or malformed — all mean "resume".
+        rm -f "$PAUSE_FILE"
+        log "Maintenance pause ended; resuming normal watchdog duties."
+    fi
+fi
+
 # ── Process self-heal (v2.1) ─────────────────────────────────────────
 # Skipped during the first 3 minutes after boot: the desktop autostart owns
 # the initial launch, and racing it from cron could start things twice.
 # (kiosk.sh also holds a flock, so even a race cannot double-launch.)
 UPTIME_S=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 999)
-if [ "${UPTIME_S:-999}" -gt 180 ]; then
+if [ "${UPTIME_S:-999}" -gt 180 ] && [ "$KIOSK_PAUSED" = "0" ]; then
     # 1. The kiosk launcher loop itself. Chromium crashes are covered by the
     #    loop, but if the loop DIES (killed, OOM, bad update) nothing restarts
     #    Chromium ever again — the screen stays frozen until a power cycle.
@@ -66,7 +92,7 @@ fi
 #    got flaky". One restart/day resets that for the cost of ~10s of black
 #    screen at night. Marker file keeps it to once per day.
 RESTART_MARK="$QMED_DIR/daily_restart_date"
-if [ "$(date +%H)" = "04" ]; then
+if [ "$(date +%H)" = "04" ] && [ "$KIOSK_PAUSED" = "0" ]; then
     TODAY=$(date +%Y-%m-%d)
     if [ "$(cat "$RESTART_MARK" 2>/dev/null)" != "$TODAY" ]; then
         echo "$TODAY" > "$RESTART_MARK"
@@ -107,7 +133,7 @@ esac
 if [ "$SERVER_OK" = "1" ]; then
     PREV=$(cat "$STATE_FILE" 2>/dev/null || echo "up")
     echo "up" > "$STATE_FILE"
-    if [ "$PREV" = "down" ]; then
+    if [ "$PREV" = "down" ] && [ "$KIOSK_PAUSED" = "0" ]; then
         log "Page servable again (HTTP ${HTTP_CODE}); reloading kiosk."
         pkill -f -- '--kiosk' 2>/dev/null || true   # self-heal loop relaunches it
     fi
@@ -164,7 +190,7 @@ kiosk_window_id() {
 # Only meaningful once the desktop has settled and only when the server is
 # actually serving — reloading against a down server just paints another
 # error page and would spin every minute for the length of the outage.
-if [ "${UPTIME_S:-999}" -gt 180 ] && [ "$SERVER_OK" = "1" ]; then
+if [ "${UPTIME_S:-999}" -gt 180 ] && [ "$SERVER_OK" = "1" ] && [ "$KIOSK_PAUSED" = "0" ]; then
     export DISPLAY="${DISPLAY:-:0}"
     WID=$(kiosk_window_id)
 

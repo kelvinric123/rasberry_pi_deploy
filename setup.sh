@@ -36,6 +36,30 @@ echo "║     QMed Queue Screen - Device Setup            ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
+# ── Get the kiosk out of the way, until the next restart ─────────────
+# Setup is interactive, and a fullscreen queue screen sits on top of the very
+# terminal you are answering questions in. Killing it is not enough on its
+# own — net_watchdog.sh puts it back within a minute — so leave a pause
+# marker as well.
+#
+# The marker is "<expiry-epoch> <boot-id>", the same format kiosk_off.sh
+# writes and net_watchdog.sh reads. The boot id is what makes this last
+# exactly "until restart": after a reboot it cannot match, so the pause is
+# void and the queue screen comes straight back. The 12-hour expiry is a
+# second safety net for a setup that was abandoned half way.
+PAUSE_FILE="/tmp/qmed-kiosk-paused"
+BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
+printf '%s %s\n' "$(( $(date +%s) + 43200 ))" "$BOOT_ID" > "$PAUSE_FILE" 2>/dev/null || true
+
+export DISPLAY="${DISPLAY:-:0}"
+pkill -f "${QMED_DIR}/kiosk.sh" 2>/dev/null || true
+sleep 1
+pkill -f -- '--kiosk' 2>/dev/null || true
+pkill -x unclutter 2>/dev/null || true          # give the mouse pointer back
+
+echo -e "${DIM}Queue screen paused for setup — it returns on the next reboot.${NC}"
+echo ""
+
 # ── Check if already configured ──────────────────────────────────────
 if [ -f "$CONFIG_FILE" ]; then
     echo -e "${YELLOW}⚠  This device is already configured.${NC}"
@@ -65,6 +89,43 @@ fi
 # ── Step 0: Network Setup ────────────────────────────────────────────
 # A queue screen must stay online. Make sure Wi-Fi is connected and saved
 # so it auto-reconnects across reboots and outages.
+# ── Step 0a: Keyboard layout ─────────────────────────────────────────
+# Done BEFORE anything asks you to type. Raspberry Pi OS defaults to the GB
+# layout; on a US keyboard that swaps " and @ (and moves # and \), which is
+# maddening when the next thing you must enter is a Wi-Fi password.
+echo -e "${CYAN}${BOLD}Step 0a: Keyboard Layout${NC}"
+
+CURRENT_KB=$(sed -n 's/^XKBLAYOUT="\?\([^"]*\)"\?/\1/p' /etc/default/keyboard 2>/dev/null | head -1)
+echo -e "  Current layout: ${BOLD}${CURRENT_KB:-unknown}${NC}"
+echo -e "  ${DIM}Type a double quote and an at sign to test:  \"  @${NC}"
+echo -e "  ${DIM}If they come out swapped, the layout does not match your keyboard.${NC}"
+echo ""
+read -p "  Layout — [u]s, [g]b, or Enter to keep: " KB_CHOICE
+
+NEW_KB=""
+case "$KB_CHOICE" in
+    u|U|us|US) NEW_KB="us" ;;
+    g|G|gb|GB|uk|UK) NEW_KB="gb" ;;
+esac
+
+if [ -n "$NEW_KB" ]; then
+    if [ -f /etc/default/keyboard ]; then
+        sudo sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=\"${NEW_KB}\"/" /etc/default/keyboard
+        # Console + X, applied now rather than at the next boot — the rest of
+        # this script is one long typing exercise.
+        sudo setupcon --save >/dev/null 2>&1 || true
+        sudo dpkg-reconfigure -f noninteractive keyboard-configuration >/dev/null 2>&1 || true
+        DISPLAY="${DISPLAY:-:0}" setxkbmap "$NEW_KB" >/dev/null 2>&1 || true
+        echo -e "  ${GREEN}✓ Keyboard set to ${NEW_KB} (active now)${NC}"
+        echo -e "  ${DIM}Test again:  \"  @${NC}"
+    else
+        echo -e "  ${YELLOW}⚠ /etc/default/keyboard not found — skipped${NC}"
+    fi
+else
+    echo -e "  ${DIM}Keeping ${CURRENT_KB:-current} layout${NC}"
+fi
+echo ""
+
 echo -e "${CYAN}${BOLD}Step 0: Network Setup${NC}"
 
 WIFI_SSID=""
@@ -104,11 +165,56 @@ else
 
     if [ "$CONFIGURE_WIFI" = "yes" ]; then
         echo -e "  ${DIM}Scanning for networks...${NC}"
-        sudo nmcli -t -f SSID,SIGNAL dev wifi list --rescan yes 2>/dev/null \
-            | awk -F: '$1!=""{printf "    - %s (signal %s)\n", $1, $2}' | sort -u | head -20 || true
+
+        # Pick from a numbered list instead of typing the SSID. Getting a name
+        # like "KPJ-Guest_5G" exactly right on a Pi keyboard is where most of
+        # the failed setups came from.
+        #
+        # SIGNAL first so a plain numeric sort works, SSID last because it is
+        # the field most likely to contain a colon.
+        mapfile -t WIFI_ROWS < <(sudo nmcli -t -f SIGNAL,SECURITY,SSID dev wifi list --rescan yes 2>/dev/null \
+            | awk -F: 'NF>=3 && $3!="" && !seen[$3]++ {sec=$2; if(sec=="")sec="open"; print $1"|"sec"|"$3}' \
+            | sort -t'|' -k1 -rn | head -20)
+
+        if [ ${#WIFI_ROWS[@]} -eq 0 ]; then
+            echo -e "  ${YELLOW}No networks found. Check the Wi-Fi antenna or move closer.${NC}"
+        fi
+
         echo ""
-        read -p "  Wi-Fi network name (SSID): " WIFI_SSID
-        read -rs -p "  Wi-Fi password (blank for open network): " WIFI_PASS
+        for i in "${!WIFI_ROWS[@]}"; do
+            IFS='|' read -r W_SIG W_SEC W_NAME <<< "${WIFI_ROWS[$i]}"
+            printf "    %2d) %-30s %3s%%  %s\n" "$((i+1))" "$W_NAME" "$W_SIG" "$W_SEC"
+        done
+        echo "     0) Enter a name manually (hidden network)"
+        echo ""
+
+        WIFI_SSID=""
+        while [ -z "$WIFI_SSID" ]; do
+            read -p "  Select network [0-${#WIFI_ROWS[@]}]: " WIFI_PICK
+            if [ "$WIFI_PICK" = "0" ]; then
+                read -p "  Network name (SSID): " WIFI_SSID
+            elif [ "$WIFI_PICK" -ge 1 ] 2>/dev/null && [ "$WIFI_PICK" -le ${#WIFI_ROWS[@]} ] 2>/dev/null; then
+                IFS='|' read -r _ _ WIFI_SSID <<< "${WIFI_ROWS[$((WIFI_PICK-1))]}"
+            else
+                echo -e "  ${YELLOW}Enter a number from the list.${NC}"
+            fi
+        done
+        echo -e "  ${GREEN}Selected:${NC} ${BOLD}${WIFI_SSID}${NC}"
+
+        # Password shown as it is typed, ON PURPOSE. A hidden field plus a
+        # possibly-mismatched keyboard layout means a wrong character is only
+        # discovered when the connection fails, with nothing to look at.
+        WIFI_PASS=""
+        while true; do
+            echo -e "  ${DIM}(the password is shown as you type, so you can check it)${NC}"
+            read -r -p "  Password (blank for an open network): " WIFI_PASS
+            if [ -z "$WIFI_PASS" ]; then
+                break
+            fi
+            echo -e "  You typed: ${BOLD}${WIFI_PASS}${NC}  ${DIM}(${#WIFI_PASS} characters)${NC}"
+            read -p "  Correct? (Y/n): " PASS_OK
+            [[ ! "$PASS_OK" =~ ^[Nn]$ ]] && break
+        done
         echo ""
 
         echo -e "  ${DIM}Connecting to ${WIFI_SSID}...${NC}"
@@ -569,6 +675,86 @@ Terminal=true
 Categories=Settings;
 EOF
 chmod +x "${DESKTOP_DIR}/QMed Setup.desktop"
+
+# ── Maintenance shortcuts ────────────────────────────────────────────
+# A queue screen runs fullscreen with no taskbar, so the usual menu entries
+# for Wi-Fi and SD Card Copier are unreachable. Put them on the desktop, where
+# they are one click away once the kiosk is stopped.
+
+fetch_asset kiosk_off.sh || true
+fetch_asset wifi_setup.sh || true
+
+# Exit Kiosk — the one that makes the others usable, since the desktop is
+# hidden behind a fullscreen browser until this runs.
+if [ -f "${QMED_DIR}/kiosk_off.sh" ]; then
+    cat > "${DESKTOP_DIR}/QMed Exit Kiosk.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=QMed Exit Kiosk
+Comment=Stop the queue screen and show the desktop (reboot restores it)
+Exec=bash -c "bash '${QMED_DIR}/kiosk_off.sh'; echo ''; read -p 'Press Enter to close...'"
+Icon=system-log-out
+Terminal=true
+Categories=Settings;
+EOF
+    chmod +x "${DESKTOP_DIR}/QMed Exit Kiosk.desktop"
+fi
+
+# Wi-Fi — the everyday job: scan, pick a network, type the password.
+if [ -f "${QMED_DIR}/wifi_setup.sh" ]; then
+    cat > "${DESKTOP_DIR}/QMed Wi-Fi.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=QMed Wi-Fi
+Comment=Scan for a wireless network and connect this device to it
+Exec=bash '${QMED_DIR}/wifi_setup.sh'
+Icon=network-wireless
+Terminal=false
+Categories=Settings;
+EOF
+    chmod +x "${DESKTOP_DIR}/QMed Wi-Fi.desktop"
+fi
+
+# Network Manager — the full connection editor: static IP, Ethernet, editing
+# or deleting saved profiles. A different job from "join a Wi-Fi network",
+# which is why it gets its own icon rather than sharing the one above.
+# Prefer the system's own launcher so it keeps the stock icon and translations.
+if [ -f /usr/share/applications/nm-connection-editor.desktop ]; then
+    cp /usr/share/applications/nm-connection-editor.desktop "${DESKTOP_DIR}/Network Connections.desktop"
+    chmod +x "${DESKTOP_DIR}/Network Connections.desktop"
+elif command -v nm-connection-editor >/dev/null 2>&1; then
+    cat > "${DESKTOP_DIR}/Network Connections.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=Network Connections
+Comment=Edit network connections, static IP and saved profiles
+Exec=nm-connection-editor
+Icon=preferences-system-network
+Terminal=false
+Categories=Settings;
+EOF
+    chmod +x "${DESKTOP_DIR}/Network Connections.desktop"
+fi
+
+# SD Card Copier — clone this card onto a new one for the next device.
+if [ -f /usr/share/applications/piclone.desktop ]; then
+    cp /usr/share/applications/piclone.desktop "${DESKTOP_DIR}/SD Card Copier.desktop"
+    chmod +x "${DESKTOP_DIR}/SD Card Copier.desktop"
+elif command -v piclone >/dev/null 2>&1; then
+    cat > "${DESKTOP_DIR}/SD Card Copier.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=SD Card Copier
+Comment=Copy this SD card to another card
+Exec=sudo piclone
+Icon=drive-removable-media
+Terminal=false
+Categories=System;
+EOF
+    chmod +x "${DESKTOP_DIR}/SD Card Copier.desktop"
+fi
+
+echo -e "${GREEN}  ✓ Desktop shortcuts: Queue Screen, Setup, Exit Kiosk, Wi-Fi, SD Card Copier${NC}"
 
 # Also keep the legacy LXDE-pi autostart for older systems.
 # Deliberately NO @lxpanel here: the taskbar pops over the kiosk whenever the
