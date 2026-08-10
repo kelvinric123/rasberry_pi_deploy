@@ -36,7 +36,7 @@ git clone https://github.com/kelvinric123/rasberry_pi_deploy.git raspberry_pi_v2
 Then install the one-line updater:
 
 ```bash
-printf '#!/bin/bash\ncd ~/Desktop/raspberry_pi_v2.1 && git pull --ff-only && cp server.py start_local_server.sh video_sync.sh scenery_sync.sh heartbeat.sh kiosk.sh net_watchdog.sh self_update.sh ~/.qmed/ && chmod +x ~/.qmed/*.sh ~/.qmed/*.py && bash ~/.qmed/start_local_server.sh && pkill -f -- "--kiosk"; echo "updated to $(git -C ~/Desktop/raspberry_pi_v2.1 rev-parse --short HEAD)"\n' > ~/qmed-update
+printf '#!/bin/bash\ncd ~/Desktop/raspberry_pi_v2.1 && git pull --ff-only && cp server.py start_local_server.sh video_sync.sh scenery_sync.sh heartbeat.sh kiosk.sh net_watchdog.sh self_update.sh kiosk_off.sh wifi_setup.sh pause_autostart.sh desktop_shortcuts.sh ~/.qmed/ && chmod +x ~/.qmed/*.sh ~/.qmed/*.py && bash ~/.qmed/start_local_server.sh && pkill -f -- "--kiosk"; echo "updated to $(git -C ~/Desktop/raspberry_pi_v2.1 rev-parse --short HEAD)"\n' > ~/qmed-update
 chmod +x ~/qmed-update
 ```
 
@@ -48,8 +48,12 @@ chmod +x ~/qmed-update
 ~/qmed-update
 ```
 
-That pulls, copies the 8 bundle files into `~/.qmed/`, and restarts the local
+That pulls, copies the 12 bundle files into `~/.qmed/`, and restarts the local
 server and the kiosk. The screen goes black for a few seconds.
+
+> The helper embeds the file list, so after a bundle gains a new script,
+> re-run the `printf` above once to refresh `~/qmed-update` — an old helper
+> silently skips files it does not know about.
 
 ---
 
@@ -58,7 +62,7 @@ server and the kiosk. The screen goes black for a few seconds.
 Downloads straight from the public repo into `~/.qmed/`:
 
 ```bash
-cd ~/.qmed && for f in server.py start_local_server.sh video_sync.sh scenery_sync.sh heartbeat.sh kiosk.sh net_watchdog.sh self_update.sh; do
+cd ~/.qmed && for f in server.py start_local_server.sh video_sync.sh scenery_sync.sh heartbeat.sh kiosk.sh net_watchdog.sh self_update.sh kiosk_off.sh wifi_setup.sh pause_autostart.sh desktop_shortcuts.sh; do
   curl -fsSL -o "$f" "https://raw.githubusercontent.com/kelvinric123/rasberry_pi_deploy/main/$f" && echo "ok   $f" || echo "FAIL $f"
 done
 chmod +x ~/.qmed/*.sh ~/.qmed/*.py
